@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Unicode, Integer
+from sqlalchemy import Column, Integer, Unicode
+
 from datastores.database.base import Base
 
 

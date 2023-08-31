@@ -3,15 +3,57 @@
 Boilerplate template for FastAPI repositories
 
 ## Table of Contents
-
+- [Project Structure](#Project-Structure)
 - [Pre-requisites](#pre-requisites)
   - [Poetry](#poetry)
   - [Enabling pre-commit hooks](#enabling-pre-commit-hooks)
-- [Connecting with database](#Connecting with database)
+- [Connecting with database](#Connecting-with-database)
   - [Creating migrations](#creating-migrations)
-- [Docker Setup](#Docker Setup)
+- [Docker Setup](#Docker-Setup)
   - [Dockerfile](#Dockerfile)
   - [Docker-compose](#Docker-compose)
+- [Contributors](#Contributors)
+
+## Project Structure
+The project structure is as follows:
+```
+ |-- app
+ |   |-- app1
+ |   |   |-- handlers
+ |   |   |-- models
+ |   |   |-- schemas
+ |   |   |-- services
+ |   |-- app2
+ |   |    ...
+ |   |-- routes.py
+ |   |-- server.py
+ |-- config
+ |   |-- config.py
+ |   |-- logger
+ |   |   |-- logger_config.py
+ |-- datastores
+ |   |-- cache
+ |   |-- database
+ |-- migrations
+ |-- tests
+ |-- utils
+ |    |-- dependencies.py
+ |-- main.py
+```
+
+- **app**: This package contains all the fastapi applications. Each application is a package in itself and contains
+  handlers, models, schemas, service. The package also contains routes.py and server.py files. routes.py contains all the
+  routes of the application and server.py contains the startup script of the application.
+- **config**: This package contains all the configurations of the application. config.py contains all the environment
+  variables and logger_config.py contains the configuration of the logger.
+- **datastores**: This package contains all the datastores of the application. Currently, it contains cache and database
+  datastores. Each datastore is a package in itself and contains all the models of that datastore.
+- **migrations**: This package contains all the migrations of the application. It uses alembic for migrations.
+- **tests**: This package contains all the tests of the application.
+- **utils**: This package contains all the utility functions of the application. Currently, it contains dependencies.py
+  which contains all the dependencies of the application.
+- **main.py**: This file contains the startup script of the application.
+
 
 ## Pre-requisites
 
@@ -89,3 +131,8 @@ Inorder to run the docker-compose, run the following command:
 ```
  docker-compose up -d
 ```
+
+## Contributors
+- [Sarwan Ahmed](https://github.com/Sarwan-Ahmed)
+- [Sohaib Omar](https://github.com/sohaibomr)
+- [Syed Farhan Ahmed](https://github.com/farhanahmed-emumba)
