@@ -1,0 +1,31 @@
+version: '3'
+services:
+  postgres:
+    image: "postgres"
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=boilerplate_user
+      - POSTGRES_DB=fastapi_boilerplate
+      - POSTGRES_PASSWORD=boilerplate_pass
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+  fast-api-service:
+    image: my-fastapi-app:latest
+    command: ./startup.sh
+    environment:
+      - ENV=dev
+      - DEBUG=True
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      - POSTGRES_DB=fastapi_boilerplate
+      - POSTGRES_USER=boilerplate_user
+      - POSTGRES_PASSWORD=boilerplate_pass
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_PORT=5432
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
