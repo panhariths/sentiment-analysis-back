@@ -1,6 +1,6 @@
 # fastapi-boilerplate
 
-Boilerplate template for FastAPI repositories
+Boilerplate template for FastAPI repositories.
 
 ## Table of Contents
 - [Project Structure](#Project-Structure)
