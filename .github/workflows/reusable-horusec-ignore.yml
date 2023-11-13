@@ -1,0 +1,19 @@
+name: Reusable workflow template
+on:
+  workflow_call:
+    
+jobs:
+  Horusec:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Horusec
+        run: 'echo "No horusec Scan Required. Test passed!"'
+  Build:
+    needs: [Horusec]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build
+        run: 'echo "No Build is required.!"'
+  Trivy:
+    needs: [Build]
+    uses: ./.github/workflows/reusable-trivy-ignore.yml
