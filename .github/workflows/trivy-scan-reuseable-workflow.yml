@@ -128,7 +128,7 @@ jobs:
           if: (failure() && steps.trivy.conclusion == 'failure') && (startsWith(github.base_ref, 'release-v') || startsWith(github.ref, 'refs/heads/release-v') || startsWith(github.base_ref, 'pre-release-v') || startsWith(github.ref, 'refs/heads/pre-release-v') || github.base_ref == 'develop' || github.ref == 'refs/heads/develop')
           uses: mmichailidis/sendgrid-mail-action@v1.0
           with:
-            mail: 'en-ztna@emumba.com'
+            mail: '<email-address>'
             from: 'Trivy Report<support@extremecloudztna.com>'
             subject: "[${{ steps.branch-name.outputs.EMAIL_BRANCH }}] Build Failed For ${{inputs.service_name}} [${{ github.run_id }}]"
             individual: true
