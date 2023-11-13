@@ -1,0 +1,409 @@
+name: Reusable workflow template
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+      service_path:
+        required: true
+        type: string
+      docker_registry:
+        required: true
+        type: string
+    secrets:
+      aws_access_key_ztna:
+        required: true
+      aws_secret_key_ztna:
+        required: true
+      horusec_s3_bucket:
+        required: true
+      horusec_s3_key:
+        required: true
+      slack_channel_webhook:
+        required: true
+      slack_horusec_channel_webhook:
+        required: true
+      jira_base_url:
+        required: true
+      jira_user_email:
+        required: true
+      jira_api_token:
+        required: true
+      gcr_token_ztna:
+        required: true
+      repo_owner_ztna:
+        required: true
+      gcr_token:
+        required: true
+      aws_s3_bucket:
+        required: true
+      send_grid_token:
+        required: true
+      google_sa_secret:
+        required: true
+      gsheet_id:
+        required: true
+      react_app_location_api_key:
+        required: false
+      react_app_pendo_api_key_dev:
+        required: false
+      react_app_pendo_api_key_qa:
+        required: false
+      react_app_pendo_api_key_demo:
+        required: false
+
+jobs:
+  Horusec:
+    if: ${{ github.event.action }} == 'opened' || github.event_name != 'push' || github.event_name != 'release' || github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      SERVICE_NAME: ${{inputs.service_name}}
+      SERVICE_PATH: ${{inputs.service_path}}
+    steps:
+      - run: sudo apt-get remove docker-ce docker-ce-cli
+      - name: Setup Docker
+        uses: docker-practice/actions-setup-docker@master
+        with:
+          docker_version: 20.10.24
+        timeout-minutes: 12
+      - run: docker --version
+      - uses: actions/checkout@v2
+      - name: Downloading Horusec
+        run: curl -fsSL https://raw.githubusercontent.com/ZupIT/horusec/master/deployments/scripts/install.sh | bash -s latest
+      - name: Set env variable
+        id: pr-url
+        if: github.event_name == 'pull_request'
+        run: |
+            ID=$(echo ${{ github.ref_name }} | cut -d'/' -f 1 )
+            echo "MERGE_URL=<strong>PR URL</strong>: https://github.com/extremenetworks/web-controller/pull/$(echo $ID)" >> $GITHUB_OUTPUT
+            echo "MERGE_URL_SLACK=*PR URL*: https://github.com/extremenetworks/web-controller/pull/$(echo $ID)" >> $GITHUB_OUTPUT
+      - name: Scanning Service
+        id: scan
+        run: horusec start -p $SERVICE_PATH -o="json" -O="./$SERVICE_NAME-Horusec-results.json" --ignore-severity=MEDIUM,LOW,UNKNOWN,INFO --log-level=debug
+      - name: installing jq
+        run: |
+            sudo apt install jq
+      - name: Fetch latest changes from develop to get latest horusec_ignore
+        run: git fetch origin develop
+      - name: Get Horusec_ignore from develop
+        id: Horusec_ignore_file
+        run: |
+          horusec_ignore_file=$(git show origin/develop:horusec_ignore)
+          echo "$horusec_ignore_file" > horusec_ignore
+       
+      - name: Checking for Vulns in the file
+        id: check
+        run: |
+            grep -q '"analysisVulnerabilities": null' ${SERVICE_NAME}-Horusec-results.json && exit 0 || echo "found Vulns"
+            bash scripts/horusec_ignore.sh ./${SERVICE_NAME}-Horusec-results.json ./horusec_ignore
+            grep -q '"vulnerabilityID":' ${SERVICE_NAME}-Horusec-results.json && exit 1 || echo "Vulns not found"
+      - name: Send Notification to Slack
+        if: ${{ failure() && steps.check.conclusion == 'failure' }}
+        run: |
+            bash scripts/vuln_slack_notification.sh ${SERVICE_NAME} ${{ github.ref_name }}  ${{ github.run_id }} ${{ secrets.slack_horusec_channel_webhook }} Horusec "${{ steps.pr-url.outputs.MERGE_URL_SLACK }}"
+      - name: Branch name
+        if: (failure() && steps.check.conclusion == 'failure') && (startsWith(github.base_ref, 'release-v') || startsWith(github.ref, 'refs/heads/release-v') || startsWith(github.base_ref, 'pre-release-v') || startsWith(github.ref, 'refs/heads/pre-release-v') || github.base_ref == 'develop' || github.ref == 'refs/heads/develop')
+        id: branch-name
+        run: |
+          echo "EMAIL_BRANCH=${{ github.ref_name }}"  >> $GITHUB_OUTPUT
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            echo "EMAIL_BRANCH=$GITHUB_HEAD_REF"  >> $GITHUB_OUTPUT
+          fi
+      - name: Twilio SendGrid Email
+        if: (failure() && steps.check.conclusion == 'failure') && (startsWith(github.base_ref, 'release-v') || startsWith(github.ref, 'refs/heads/release-v') || startsWith(github.base_ref, 'pre-release-v') || startsWith(github.ref, 'refs/heads/pre-release-v') || github.base_ref == 'develop' || github.ref == 'refs/heads/develop')
+        uses: mmichailidis/sendgrid-mail-action@v1.0
+        with:
+          mail: 'en-ztna@emumba.com'
+          from: 'Horusec Report<support@extremecloudztna.com>'
+          subject: "[${{ steps.branch-name.outputs.EMAIL_BRANCH }}] Build Failed For ${{inputs.service_name}} [${{ github.run_id }}]"
+          individual: false
+          text: "Build Failed for the <strong>${{inputs.service_name}}</strong> in <strong>${{ steps.branch-name.outputs.EMAIL_BRANCH }}</strong> <br> <br> <strong>Workflow URL</strong>: https://github.com/extremenetworks/web-controller/actions/runs/${{ github.run_id }} <br> ${{ steps.pr-url.outputs.MERGE_URL }}"
+          sendgrid-token: ${{ secrets.send_grid_token }}
+      - name: creating service account creds
+        if: ${{ failure() && steps.check.conclusion == 'failure' }}
+        run: |
+          echo "$SA_CREDS" > ztna-project-test-a0666f83a04c.json
+        shell: bash
+        env:
+          SA_CREDS: ${{secrets.google_sa_secret}}
+      - uses: actions/setup-python@v4
+        if: ${{ failure() && steps.check.conclusion == 'failure' }}
+        with:
+          python-version: '3.8'
+      - name: Gsheet Script
+        if: ${{ failure() && steps.check.conclusion == 'failure' }}
+        run: |
+          if [ "${{github.event_name}}" == "pull_request" ]; then
+            OWNER=${{github.event.pull_request.user.login}}
+          else
+            OWNER=${{github.triggering_actor}}
+          fi
+          pip install gspread oauth2client
+          python scripts/vuln_sheet.py
+        env:
+          GSHEET_ID: ${{ secrets.gsheet_id }}
+          JSON_FILE: ${{inputs.service_name}}-Horusec-results.json
+          SERVICE_NAME: ${{inputs.service_name}}
+          OWNER: $OWNER
+          SCAN: Horusec
+
+      - name: Set AWS credentials
+        if: always()
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.aws_access_key_ztna }}
+          aws-secret-access-key: ${{ secrets.aws_secret_key_ztna }}
+          aws-region: eu-west-1
+
+      - name: Upload to S3
+        if: always()
+        run: |
+          aws s3 cp ${SERVICE_NAME}-Horusec-results.json s3://${{ secrets.horusec_s3_bucket }}/${SERVICE_NAME}/${{ github.sha }}-${{ secrets.horusec_s3_key }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key_ztna }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key_ztna }}
+      - name: Upload horusec report
+        if: always()
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{inputs.service_name}}-Horusec-results.json
+          path: ./${{inputs.service_name}}-Horusec-results.json
+      
+  Build:
+    needs: [Horusec]
+    runs-on: ubuntu-latest
+    env:
+      SERVICE_NAME: ${{inputs.service_name}}
+      SERVICE_PATH: ${{inputs.service_path}}
+      DOCKER_REGISTRY: ${{inputs.docker_registry}}
+      JIRA_BASE_URL: ${{ secrets.jira_base_url }}
+      JIRA_USER_EMAIL: ${{ secrets.jira_user_email }}
+      JIRA_API_TOKEN: ${{ secrets.jira_api_token }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.aws_access_key_ztna }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.aws_secret_key_ztna }}
+    outputs:
+      branch_name: ${{ steps.increment_step.outputs.branch_name }}
+      env_for_branch_exists: ${{ steps.env_dir_check.outputs.env_dir_exists }}
+      # DOCKER_IMAGE: ${{ steps.set-docker-image-name.outputs.DOCKER_IMAGE }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.gcr_token_ztna }}
+      - name: Set env variable
+        id: pr-url
+        if: github.event_name == 'pull_request'
+        run: |
+            ID=$(echo ${{ github.ref_name }} | cut -d'/' -f 1 )
+            echo "MERGE_URL=<strong>PR URL</strong>: https://github.com/extremenetworks/web-controller/pull/$(echo $ID)" >> $GITHUB_OUTPUT
+            echo "MERGE_URL_SLACK=*PR URL*: https://github.com/extremenetworks/web-controller/pull/$(echo $ID)" >> $GITHUB_OUTPUT
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.repo_owner_ztna }}
+          password: ${{ secrets.gcr_token_ztna }}
+      - name: Set AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.aws_access_key_ztna }}
+          aws-secret-access-key: ${{ secrets.aws_secret_key_ztna }}
+          aws-region: eu-west-1
+      - name: Build and Tag Docker image
+        #if: (github.ref_name !='develop') || env.SERVICE_NAME == 'frontend' || env.SERVICE_NAME == 'resource-service' || env.SERVICE_NAME == 'auth-service' || env.SERVICE_NAME == 'analytics-service'  || env.SERVICE_NAME == 'ztmesh-documentation' || env.SERVICE_NAME == 'ambassador-authn-plugin' || env.SERVICE_NAME == 'craas-connector' || env.SERVICE_NAME == 'debezium-connector-resource' || env.SERVICE_NAME == 'debezium-connector-auth'
+        id: build_step
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ZTNA }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY_ZTNA }}
+        run: |
+          branch_name=${GITHUB_REF##*/}
+          component_name=${SERVICE_NAME}
+          ## Getting the short hash from the commit hash
+          SHORT_COMMIT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`
+          echo "SHORT_COMMIT_SHA=${SHORT_COMMIT_SHA}" >> $GITHUB_ENV
+          cd $SERVICE_PATH
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            S3_bucket=${{ secrets.aws_s3_bucket }}
+            S3_path="s3://${S3_bucket}/${branch_name}/${component_name}"
+            version_file_exists=$((aws s3 ls s3://${{ secrets.aws_s3_bucket }}/${branch_name}/${component_name}/${component_name}.version) || true)
+            if [ -z "$version_file_exists" ]
+            then
+              version="${branch_name};build.1"
+              echo $version > ${component_name}.version
+              build_version=$(echo $version | awk -F';' '{print $2}')
+            else
+              aws s3 cp --quiet ${S3_path}/${component_name}.version ${component_name}.version
+              version=`cat ${component_name}.version`
+              build=$(echo $version | awk -F';' '{print $2}')
+              build_current_version=$(echo $version | awk -F';' '{print $2}' | awk -F'.' '{print $2}')
+              build_new_version=`expr ${build_current_version} + 1`
+              build_version=$(echo build.${build_new_version})
+              echo "${branch_name};${build_version}" > ${component_name}.version
+            fi
+            echo "build_version=${build_version}" >> $GITHUB_ENV
+            echo "branch_name=${branch_name}" >> $GITHUB_ENV
+          else
+            echo "build_version=temp-v1" >> $GITHUB_ENV
+            build_version="temp-v1"
+          fi
+          echo "branch_name=${branch_name}" >> $GITHUB_ENV
+          if [[ "${SERVICE_NAME}" == "frontend" ]]
+          then
+            bash update_frontend_package.sh ${branch_name}+${build_version}
+            bash create_env.sh ${{ secrets.REACT_APP_LOCATION_API_KEY }} ${{ secrets.REACT_APP_PENDO_API_KEY_DEV }} ${{ secrets.REACT_APP_PENDO_API_KEY_QA }} ${{ secrets.REACT_APP_PENDO_API_KEY_DEMO }}
+          fi
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            docker build -t $DOCKER_REGISTRY/$component_name:${branch_name}-${build_version}-${SHORT_COMMIT_SHA} -t $DOCKER_REGISTRY/$component_name:${branch_name}-${SHORT_COMMIT_SHA} -t $DOCKER_REGISTRY/$component_name:${branch_name} --build-arg ACCESS_TOKEN_USR=${{ secrets.repo_owner_ztna }} --build-arg ACCESS_TOKEN_PWD=${{ secrets.gcr_token_ztna }} .
+          else
+            docker build -t $DOCKER_REGISTRY/$component_name:${branch_name}-${SHORT_COMMIT_SHA} -t $DOCKER_REGISTRY/$component_name:${branch_name} --build-arg ACCESS_TOKEN_USR=${{ secrets.repo_owner_ztna }} --build-arg ACCESS_TOKEN_PWD=${{ secrets.gcr_token_ztna }} .
+          fi  
+            # echo "DOCKER_IMAGE=$DOCKER_REGISTRY/$component_name:${branch_name}-${build_version}-${SHORT_COMMIT_SHA}" >> $GITHUB_ENV
+                 
+      - name: Push Docker Image
+       # if: github.event_name != 'pull_request'
+        id: set-docker-image-name
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            docker push $DOCKER_REGISTRY/$SERVICE_NAME:${{ env.branch_name }}-${{ env.SHORT_COMMIT_SHA }}
+          else
+            docker push $DOCKER_REGISTRY/$SERVICE_NAME:${{ env.branch_name }}
+            docker push $DOCKER_REGISTRY/$SERVICE_NAME:${{ env.branch_name }}-${{ env.SHORT_COMMIT_SHA }}
+            docker push $DOCKER_REGISTRY/$SERVICE_NAME:${{ env.branch_name }}-${{ env.build_version }}-${{ env.SHORT_COMMIT_SHA }}
+          fi
+      - name: Increment Version File on S3
+        if: ${{ github.event_name != 'pull_request' && github.event_name != 'release' }}
+        id: increment_step
+        run: |
+          branch_name=${GITHUB_REF##*/}
+          echo "::set-output name=branch_name::${branch_name}"
+          component_name=${SERVICE_NAME}
+          S3_bucket=${{ secrets.aws_s3_bucket }}
+          S3_path="s3://${S3_bucket}/${branch_name}/${component_name}"
+          echo "${branch_name};${build_version}" > ${component_name}.version
+          aws s3 cp ${component_name}.version ${S3_path}/${component_name}.version --acl public-read
+      - name: Check if ENV folder exists for branch
+        if: github.event_name != 'pull_request'
+        id: env_dir_check
+        run: |
+          branch_name=${GITHUB_REF##*/}
+          git fetch && git checkout -f web-controller-env-conf
+          if [ -d ztna-deployment/${branch_name} ]; 
+          then
+            echo "env_dir_exists=true" >> $GITHUB_OUTPUT
+          fi
+          cat $GITHUB_OUTPUT
+                
+  Pytest:
+    needs: [Build]
+    if: github.event_name == 'pull_request' && (inputs.service_name  == 'resource-service' || inputs.service_name  == 'auth-service' || inputs.service_name  == 'analytics-service')
+    # if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/pytest-reusable-workflow.yml
+    with:
+      SERVICE_NAME: ${{inputs.service_name}}
+      service_path: ${{inputs.service_path}}
+      docker_registry: ghcr.io/extremenetworks/web-controller
+    secrets:
+      aws_access_key_ztna: ${{ secrets.AWS_ACCESS_KEY_ZTNA }}
+      aws_secret_key_ztna: ${{ secrets.AWS_SECRET_KEY_ZTNA }}
+      gcr_token_ztna: ${{ secrets.GCR_TOKEN_ZTNA }}
+      repo_owner_ztna: ${{ secrets.REPO_OWNER_ZTNA }}
+      gcr_token: ${{ secrets.GCR_TOKEN }}
+      aws_s3_bucket: ${{ secrets.AWS_S3_BUCKET }}
+      
+  Trivy:
+    needs: [Build]
+    uses: ./.github/workflows/trivy-scan-reuseable-workflow.yml
+    with:
+      SERVICE_NAME: ${{inputs.service_name}}
+      service_path: ${{inputs.service_path}}
+      docker_registry: ghcr.io/extremenetworks/web-controller
+    secrets:
+      aws_access_key_ztna: ${{ secrets.AWS_ACCESS_KEY_ZTNA }}
+      aws_secret_key_ztna: ${{ secrets.AWS_SECRET_KEY_ZTNA }}
+      slack_channel_webhook: ${{ secrets.SLACK_CHANNEL_WEBHOOK }}
+      slack_horusec_channel_webhook: ${{ secrets.SLACK_HORUSEC_CHANNEL_WEBHOOK }}
+      gcr_token_ztna: ${{ secrets.GCR_TOKEN_ZTNA }}
+      repo_owner_ztna: ${{ secrets.REPO_OWNER_ZTNA }}
+      gcr_token: ${{ secrets.GCR_TOKEN }}
+      aws_s3_bucket: ${{ secrets.AWS_S3_BUCKET }}
+      send_grid_token: ${{ secrets.SEND_GRID_TOKEN }}
+      google_sa_secret: ${{secrets.GOOGLE_SA_SECRET}}
+      gsheet_id: ${{secrets.GSHEET_ID}}     
+
+  Deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: [Trivy]
+    if: needs.Build.outputs.env_for_branch_exists == 'true' 
+    env:
+      SERVICE_NAME: ${{inputs.service_name}}
+      DOCKER_REGISTRY: ${{inputs.docker_registry}}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.gcr_token_ztna }}
+      # - name: Check if env specific directory exists or not
+      #   run: |
+      #     branch_name=${GITHUB_REF##*/}
+      #     git fetch && git checkout web-controller-env-conf
+      #     if [ -d ztna-deployment/${branch_name} ]; 
+      #     then
+      #       echo "env_dir_exists=true" >> $GITHUB_OUTPUT
+      #     fi
+      #     cat $GITHUB_OUTPUT
+      #   id: env_dir_check
+      - name: Setup Kustomize
+        # if: steps.env_dir_check.outputs.env_dir_exists == 'true'
+        uses: imranismail/setup-kustomize@v1
+        with:
+          kustomize-version: "4.0.1"
+      - name: Set AWS credentials
+        # if: steps.env_dir_check.outputs.env_dir_exists == 'true'
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.aws_access_key_ztna }}
+          aws-secret-access-key: ${{ secrets.aws_secret_key_ztna }}
+          aws-region: eu-west-1
+      - name: Update Kubernetes resources
+        # if: steps.env_dir_check.outputs.env_dir_exists == 'true'
+        id: update_kubernetes_resources
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ZTNA }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY_ZTNA }}
+        run: |
+            ## Getting the short hash from the commit hash
+            SHORT_COMMIT_SHA=`echo ${GITHUB_SHA} | cut -c1-8`
+            branch_name=${GITHUB_REF##*/}
+            component_name=${SERVICE_NAME}
+            S3_bucket=${{ secrets.aws_s3_bucket }}
+            S3_path="s3://${S3_bucket}/${branch_name}/${component_name}"
+            build_version=$(aws s3 cp --quiet ${S3_path}/${component_name}.version - | awk -F';' '{print $2}')
+            git fetch && git checkout web-controller-env-conf
+            if [ ! -d ztna-deployment/${branch_name}/${SERVICE_NAME} ]; then
+              mkdir -p ztna-deployment/${branch_name}/${SERVICE_NAME}
+            fi
+            cd ztna-deployment/${branch_name}/$SERVICE_NAME
+            for file in `git show ${branch_name}:ztna-deployment/application-manifests/${SERVICE_NAME} | awk 'NR>2'  | grep -v kustomization.yaml`
+            do
+                git show ${branch_name}:ztna-deployment/application-manifests/${SERVICE_NAME}/${file} > ${file}
+            done
+            kustomize edit set image $DOCKER_REGISTRY/$SERVICE_NAME=$DOCKER_REGISTRY/$SERVICE_NAME:${branch_name}-${build_version}-${SHORT_COMMIT_SHA}
+
+            if [[ "${SERVICE_NAME}" == "debezium-connector-"* ]]; then
+              sed -i "s/image_tag=.*/image_tag=${branch_name}-${build_version}-${SHORT_COMMIT_SHA}/" kustomization.yaml
+            fi
+            
+            cat kustomization.yaml
+      - name: Commit changes to web-controller repo (branch - web-controller-env-conf)
+        # if: steps.env_dir_check.outputs.env_dir_exists == 'true'
+        run: |
+            branch_name=${GITHUB_REF##*/}
+            cd ztna-deployment/${branch_name}/$SERVICE_NAME
+            git fetch && git checkout web-controller-env-conf
+            #git remote set-url origin https://x-access-token:${{ secrets.gcr_token }}@github.com/extremenetworks/web-controller-deployment.git
+            git config --global user.name 'github_user'
+            git config --global user.email '<>'
+            git pull
+            git add .
+            git commit -m "kustomize updated ${branch_name} $SERVICE_NAME "
+            git push    
