@@ -19,3 +19,13 @@ venv.bak/
 *.py,cover
 
 .idea/
+
+.DS_Store
+
+# BERT Modules
+saved_model.pb
+tfhub_module.pb
+bert_config.json
+vocab_file_BERT_.txt
+variables.data-00000-of-00001
+variables.index
