@@ -15,8 +15,8 @@ def init_routers(app_: FastAPI) -> None:
 
 def create_app() -> FastAPI:
     app_ = FastAPI(
-        title="Boilerplate API",
-        description="Boilerplate API for FastAPI",
+        title="Sentiment Analysis API",
+        description="API For Sentiment Analysis Project Demonstration",
         version="1.0.0",
     )
     init_routers(app_=app_)

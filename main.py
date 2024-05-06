@@ -12,6 +12,7 @@ logger = logging.getLogger(config.logger_name_prefix + __name__)
 
 def main():
     logger.info("Starting uvicorn server...")
+    print("HERE")
     uvicorn.run(
         app="app.server:app",
         host=config.app_host,

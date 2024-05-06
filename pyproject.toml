@@ -6,7 +6,7 @@ authors = ["Your Name <you@example.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 fastapi = "0.101.1"
 pydantic = "2.2.1"
 uvicorn = "0.23.2"
@@ -14,6 +14,9 @@ structlog = "23.1.0"
 alembic = "1.11.3"
 pydantic-settings = "2.0.3"
 psycopg2 = "2.9.7"
+tensorflow = "^2.16.1"
+tensorflow-hub = "^0.16.1"
+khmer-nltk = "^1.6"
 
 
 [build-system]
