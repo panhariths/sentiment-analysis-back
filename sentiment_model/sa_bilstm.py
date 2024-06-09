@@ -10,8 +10,12 @@ class SaBiLSTM(Model):
         self.lstm_layers = num_layers
         self.hidden_size = hidden_size
         
-        self.lstm = LSTM(units=hidden_size, return_sequences=True, dropout=0.2, input_shape=(None, input_size))
+        # self.lstm = LSTM(units=hidden_size, return_sequences=True, dropout=0.2, input_shape=(None, input_size))
+        self.lstm = LSTM(units=hidden_size, return_sequences=True, dropout=0.52, input_shape=(None, input_size))
         self.bi_lstm = Bidirectional(self.lstm, merge_mode='concat')
+
+        self.lstm2 = LSTM(units=hidden_size * 2, return_sequences=True, dropout=0.52)
+        self.bi_lstm2 = Bidirectional(self.lstm2, merge_mode='concat')
         
         self.fc1 = Dense(hidden_size)
         self.relu = Activation('relu')
@@ -21,6 +25,8 @@ class SaBiLSTM(Model):
     def call(self, x):
 
         output = self.bi_lstm(x)
+
+        output = self.bi_lstm2(output)
         
         # Select the last output from the sequence
         output = output[:, -1, :]
