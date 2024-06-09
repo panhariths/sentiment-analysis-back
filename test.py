@@ -1,4 +1,6 @@
 import numpy as np
+import pickle
+import time
 from khmernltk import word_tokenize
 
 import sys
@@ -9,6 +11,9 @@ from sentiment_model.sa_model import SAModel
 from sentiment_model.preprocessing import preprocess
 
 if __name__ == "__main__":
+
+    """ Record start time """
+    start_time = time.time()
     
     """ Text input """
 
@@ -38,6 +43,13 @@ if __name__ == "__main__":
     prediction = model.predict(embedded)
 
     print("Finished running model...")
+
+    """ Record end time """
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    print(f'Elapsed time: {elapsed_time} seconds')
 
     prediction_class_index = np.argmax(prediction)
     classes = ['Negative', 'Neutral', 'Positive']
