@@ -22,6 +22,25 @@ class SentimentRequestSchema(BaseModel):
 
 router = APIRouter()
 
+# BILSTM
+bilstm_model = SAModel()
+
+# SVM
+with open('/Users/panharithsun/Documents/fyp_demo/FastAPI-template/sentiment_model/sentiment_svm_proba.pkl', 'rb') as f:
+    svm_model = pickle.load(f)
+
+# KNN
+with open('/Users/panharithsun/Documents/fyp_demo/FastAPI-template/sentiment_model/sentiment_knn.pkl', 'rb') as f:
+    knn_model = pickle.load(f)
+
+# NB
+with open('/Users/panharithsun/Documents/fyp_demo/FastAPI-template/sentiment_model/sentiment_nb.pkl', 'rb') as f:
+    nb_model = pickle.load(f)
+
+# RF
+with open('/Users/panharithsun/Documents/fyp_demo/FastAPI-template/sentiment_model/sentiment_rf.pkl', 'rb') as f:
+    rf_model = pickle.load(f)
+
 def process_input(input):
     """ Text input """
 
@@ -73,7 +92,6 @@ def show_multiclass_result(prediction, input_text):
 @router.post(
     "/sentiment",
     response_model=SentimentResponseSchema,
-    # responses={"400": {"model": ExceptionResponseSchema}},
 )
 async def get_sentiment(
   payload: SentimentRequestSchema
@@ -84,8 +102,7 @@ async def get_sentiment(
 
     """ Sentiment Analysis Model """
 
-    model = SAModel()
-    prediction = model.predict(embedded)
+    prediction = bilstm_model.predict(embedded)
 
     print("Finished running model...")
 
@@ -103,7 +120,6 @@ async def get_sentiment(
 @router.post(
     "/sentiment-svm",
     response_model=SentimentResponseSchema,
-    # responses={"400": {"model": ExceptionResponseSchema}},
 )
 async def get_sentiment_svm(
   payload: SentimentRequestSchema
@@ -114,9 +130,7 @@ async def get_sentiment_svm(
 
     """ Sentiment Analysis Model """
 
-    with open('/Users/panharithsun/Documents/fyp_demo/FastAPI-template/sentiment_model/sentiment_svm_proba.pkl', 'rb') as f:
-        model = pickle.load(f)
-    prediction = model.predict_proba(embedded)
+    prediction = svm_model.predict_proba(embedded)
 
     print(prediction)
 
@@ -136,7 +150,6 @@ async def get_sentiment_svm(
 @router.post(
     "/sentiment-knn",
     response_model=SentimentResponseSchema,
-    # responses={"400": {"model": ExceptionResponseSchema}},
 )
 async def get_sentiment_knn(
   payload: SentimentRequestSchema
@@ -147,9 +160,7 @@ async def get_sentiment_knn(
 
     """ Sentiment Analysis Model """
 
-    with open('/Users/panharithsun/Documents/fyp_demo/FastAPI-template/sentiment_model/sentiment_knn.pkl', 'rb') as f:
-        model = pickle.load(f)
-    prediction = model.predict_proba(embedded)
+    prediction = knn_model.predict_proba(embedded)
 
     print(prediction)
 
@@ -169,7 +180,6 @@ async def get_sentiment_knn(
 @router.post(
     "/sentiment-nb",
     response_model=SentimentResponseSchema,
-    # responses={"400": {"model": ExceptionResponseSchema}},
 )
 async def get_sentiment_nb(
   payload: SentimentRequestSchema
@@ -184,9 +194,7 @@ async def get_sentiment_nb(
 
     """ Sentiment Analysis Model """
 
-    with open('/Users/panharithsun/Documents/fyp_demo/FastAPI-template/sentiment_model/sentiment_nb.pkl', 'rb') as f:
-        model = pickle.load(f)
-    prediction = model.predict_proba(scaled_embedded)
+    prediction = nb_model.predict_proba(scaled_embedded)
 
     print(prediction)
 
@@ -206,7 +214,6 @@ async def get_sentiment_nb(
 @router.post(
     "/sentiment-rf",
     response_model=SentimentResponseSchema,
-    # responses={"400": {"model": ExceptionResponseSchema}},
 )
 async def get_sentiment_rf(
   payload: SentimentRequestSchema
@@ -217,9 +224,7 @@ async def get_sentiment_rf(
 
     """ Sentiment Analysis Model """
 
-    with open('/Users/panharithsun/Documents/fyp_demo/FastAPI-template/sentiment_model/sentiment_rf.pkl', 'rb') as f:
-        model = pickle.load(f)
-    prediction = model.predict_proba(embedded)
+    prediction = rf_model.predict_proba(embedded)
 
     print(prediction)
 
